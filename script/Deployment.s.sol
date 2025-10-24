@@ -2,15 +2,18 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Script.sol";
+import "../src/CampaignFactory.sol";
 
 contract DeploymentScript is Script {
-    // Deployment logic would go here
-
     function run() external {
-        // Example deployment steps
         vm.startBroadcast();
 
-        // Deploy contracts here
+        address campaignFactory = address(new CampaignFactory(
+            address(0x1),
+            address(0x2)
+        ));
+
+        console.log("CampaignFactory deployed at:", campaignFactory);
 
         vm.stopBroadcast();
     }
