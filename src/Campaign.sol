@@ -3,12 +3,15 @@ pragma solidity ^0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./interfaces/CampaignInterface.sol";
 import "./interfaces/EquityTokenInterface.sol";
 
 /**
  * @title Campaign
  * @dev Contrato de campaña para equity crowdfunding con gestión de hitos y distribución de tokens
+ * Los hitos se configuran en cantidades de shares (equity tokens) en lugar de porcentajes
+ * para garantizar distribuciones sin decimales
  * @author Ledgit (https://github.com/0xledgit)
  */
 contract Campaign is CampaignInterface {
@@ -27,7 +30,7 @@ contract Campaign is CampaignInterface {
     uint256 public dateTimeEnd;
 
     mapping(uint256 => string) public milestoneMapping;
-    mapping(uint256 => uint256) public milestonePercentageMapping; // Porcentajes en basis points (ej: 2000 = 20%)
+    mapping(uint256 => uint256) public milestoneSharesMapping; // Cantidad de shares (equity tokens) a liberar en este hito
 
     uint256 public platformFee; // Fee en basis points (ej: 300 = 3%)
 
@@ -35,6 +38,7 @@ contract Campaign is CampaignInterface {
     mapping(address => uint256) public investments;
     address[] public investors;
     uint256 public totalRaised;
+    uint256 public totalSharesCommitted;
 
     // Control de hitos
     uint256 public currentMilestone;
@@ -67,10 +71,10 @@ contract Campaign is CampaignInterface {
         uint256 _tokenSupplyOffered,
         uint256 _platformFee,
         string[] memory _milestoneDescriptions,
-        uint256[] memory _milestonePercentages
+        uint256[] memory _milestoneShares
     ) external onlyNewCampaign {
         require(
-            _milestoneDescriptions.length == _milestonePercentages.length,
+            _milestoneDescriptions.length == _milestoneShares.length,
             "Milestone arrays length mismatch"
         );
         require(
@@ -93,19 +97,19 @@ contract Campaign is CampaignInterface {
         dateTimeEnd = _dateTimeEnd;
         tokenSupplyOffered = _tokenSupplyOffered;
         platformFee = _platformFee;
-
+        currentMilestone = 0;
         totalMilestones = _milestoneDescriptions.length;
-        uint256 totalPercentage = 0;
+        uint256 totalShares = 0;
 
         for (uint256 i = 0; i < _milestoneDescriptions.length; i++) {
             milestoneMapping[i] = _milestoneDescriptions[i];
-            milestonePercentageMapping[i] = _milestonePercentages[i];
-            totalPercentage += _milestonePercentages[i];
+            milestoneSharesMapping[i] = _milestoneShares[i];
+            totalShares += _milestoneShares[i];
         }
 
         require(
-            totalPercentage == 10000,
-            "Sum of milestone percentages must equal 100% (10000 basis points)"
+            totalShares == _tokenSupplyOffered,
+            "Sum of milestone shares must equal tokenSupplyOffered"
         );
 
         status = CampaignStatus.Created;
@@ -113,13 +117,20 @@ contract Campaign is CampaignInterface {
         emit CampaignCreated(address(this), msg.sender);
     }
 
-    function commitFunds(uint256 amount) external {
+    function commitFunds(uint256 _sharesQuantity) external {
         require(
             status == CampaignStatus.Active || status == CampaignStatus.Created,
             "Campaign not active"
         );
         require(block.timestamp < dateTimeEnd, "Campaign ended");
-        require(amount > 0, "Amount must be greater than 0");
+
+        uint256 amount = Math.mulDiv(
+            _sharesQuantity,
+            maxCap,
+            tokenSupplyOffered
+        );
+
+        require(_sharesQuantity > 0, "Shares must be greater than 0");
         require(totalRaised + amount <= maxCap, "Exceeds max cap");
 
         IERC20(addressBaseToken).safeTransferFrom(
@@ -133,15 +144,29 @@ contract Campaign is CampaignInterface {
         }
 
         investments[msg.sender] += amount;
+        totalSharesCommitted += _sharesQuantity;
         totalRaised += amount;
+
+        if (totalRaised == maxCap) {
+            status = CampaignStatus.Successful;
+            emit CampaignSuccessful(address(this), totalRaised);
+        }
 
         emit FundsCommitted(msg.sender, amount);
     }
 
     function finalizeCampaign() external {
-        require(block.timestamp >= dateTimeEnd, "Campaign not ended yet");
+        if ((block.timestamp >= dateTimeEnd && totalRaised >= minCap)) {
+            status = CampaignStatus.Successful;
+        }
+
         require(
-            status == CampaignStatus.Created || status == CampaignStatus.Active,
+            (block.timestamp >= dateTimeEnd && totalRaised >= minCap) ||
+                totalRaised == maxCap,
+            "Campaign not ended yet"
+        );
+        require(
+            status == CampaignStatus.Successful,
             "Campaign already finalized"
         );
 
@@ -149,8 +174,11 @@ contract Campaign is CampaignInterface {
             status = CampaignStatus.Successful;
 
             tokenSupplyEffective = (totalRaised * tokenSupplyOffered) / maxCap;
-
-            currentMilestone = 0;
+            for (uint64 i = 0; i < totalMilestones; i++) {
+                milestoneSharesMapping[i] =
+                    (milestoneSharesMapping[i] * totalSharesCommitted) /
+                    tokenSupplyOffered;
+            }
 
             freeFunds(0);
         } else {
@@ -219,12 +247,21 @@ contract Campaign is CampaignInterface {
 
         milestoneCompleted[milestoneId] = true;
 
-        freeFunds(milestoneId);
+        freeFunds(milestoneId + 1);
 
         currentMilestone++;
 
-        uint256 milestoneAmount = (totalRaised *
-            milestonePercentageMapping[milestoneId]) / 10000;
+        uint256 milestoneShares = milestoneSharesMapping[milestoneId];
+        uint256 pricePerShare = Math.mulDiv(
+            totalRaised,
+            1,
+            tokenSupplyEffective
+        );
+        uint256 milestoneAmount = Math.mulDiv(
+            milestoneShares,
+            pricePerShare,
+            1
+        );
         emit MilestoneCompleted(milestoneId, milestoneAmount);
     }
 
@@ -237,8 +274,17 @@ contract Campaign is CampaignInterface {
     {
         require(milestoneId < totalMilestones, "Invalid milestone ID");
 
-        uint256 milestoneAmount = (totalRaised *
-            milestonePercentageMapping[milestoneId]) / 10000;
+        uint256 milestoneShares = milestoneSharesMapping[milestoneId];
+        uint256 pricePerShare = Math.mulDiv(
+            totalRaised,
+            1,
+            tokenSupplyEffective
+        );
+        uint256 milestoneAmount = Math.mulDiv(
+            milestoneShares,
+            pricePerShare,
+            1
+        );
 
         return (
             milestoneMapping[milestoneId],
@@ -247,14 +293,39 @@ contract Campaign is CampaignInterface {
         );
     }
 
-    function freeFunds(uint256 milestoneId) private {
-        uint256 milestonePercentage = milestonePercentageMapping[milestoneId];
-        require(milestonePercentage > 0, "Invalid milestone percentage");
+    function finalizeContract(uint256 milestoneId) private {
+        require(milestoneId == totalMilestones, "Invalid milestone ID");
+        status = CampaignStatus.Finalized;
+        emit CampaignFinalized(address(this), status);
+    }
 
-        uint256 milestoneAmount = (totalRaised * milestonePercentage) / 10000;
+    function freeFunds(uint256 milestoneId) private {
+        if (milestoneId == totalMilestones) {
+            finalizeContract(milestoneId);
+            return;
+        }
+
+        uint256 milestoneShares = milestoneSharesMapping[milestoneId];
+        require(milestoneShares > 0, "Invalid milestone shares");
+
+        uint256 pricePerShare = Math.mulDiv(
+            totalRaised,
+            1,
+            tokenSupplyEffective
+        );
+        uint256 milestoneNoFee = Math.mulDiv(
+            milestoneShares,
+            pricePerShare,
+            1
+        ) * 10000;
+        uint256 milestoneAmount = Math.mulDiv(
+            milestoneNoFee,
+            (10000 - platformFee),
+            100000000
+        );
 
         if (milestoneId == 0 && !feePaid) {
-            uint256 feeAmount = (totalRaised * platformFee) / 10000;
+            uint256 feeAmount = Math.mulDiv(totalRaised, platformFee, 10000);
 
             if (feeAmount > 0) {
                 IERC20(addressBaseToken).safeTransfer(addressAdmin, feeAmount);
@@ -264,8 +335,7 @@ contract Campaign is CampaignInterface {
 
         IERC20(addressBaseToken).safeTransfer(addressPyme, milestoneAmount);
 
-        uint256 tokensForMilestone = (tokenSupplyEffective *
-            milestonePercentage) / 10000;
+        uint256 tokensForMilestone = milestoneShares;
 
         EquityTokenInterface(addressContractToken).mint(
             address(this),

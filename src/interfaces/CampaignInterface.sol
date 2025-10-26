@@ -6,7 +6,8 @@ interface CampaignInterface {
         Created,
         Active,
         Successful,
-        Failed
+        Failed,
+        Finalized
     }
 
     // ============ EVENTOS ============
@@ -31,6 +32,7 @@ interface CampaignInterface {
         address indexed requester,
         string evidence
     );
+    event CampaignSuccessful(address indexed campaignAddress, uint256 totalRaised);
 
     // ============ FUNCIONES DE INICIALIZACIÓN ============
 
@@ -46,7 +48,7 @@ interface CampaignInterface {
      * @param _tokenSupplyOffered Supply máximo de tokens a ofrecer
      * @param _platformFee Fee de plataforma en basis points (300 = 3%)
      * @param _milestoneDescriptions Array de descripciones de milestones
-     * @param _milestonePercentages Array de porcentajes en basis points (suma = 10000)
+     * @param _milestoneShares Array de cantidades de shares (equity tokens) por hito (suma = _tokenSupplyOffered)
      */
     function initialize(
         address _addressPyme,
@@ -59,7 +61,7 @@ interface CampaignInterface {
         uint256 _tokenSupplyOffered,
         uint256 _platformFee,
         string[] memory _milestoneDescriptions,
-        uint256[] memory _milestonePercentages
+        uint256[] memory _milestoneShares
     ) external;
 
     // ============ FUNCIONES DE INVERSIÓN ============

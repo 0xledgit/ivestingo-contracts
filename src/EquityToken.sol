@@ -61,4 +61,11 @@ contract EquityToken is ERC20, ERC20Permit, AccessControl {
     function nonces(address owner) public view virtual override(ERC20Permit) returns (uint256) {
         return super.nonces(owner);
     }
+
+    /**
+     * @dev Override de decimales para tokens de equity(entero)
+     */
+    function decimals() public pure override returns (uint8) {
+        return 0;
+    }
 }
