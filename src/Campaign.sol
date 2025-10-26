@@ -160,6 +160,12 @@ contract Campaign is CampaignInterface {
             status = CampaignStatus.Successful;
         }
 
+        if (totalRaised < minCap && block.timestamp >= dateTimeEnd) {
+            status = CampaignStatus.Failed;
+            emit CampaignFailed(address(this), status);
+            return;
+        }
+
         require(
             (block.timestamp >= dateTimeEnd && totalRaised >= minCap) ||
                 totalRaised == maxCap,
@@ -181,8 +187,6 @@ contract Campaign is CampaignInterface {
             }
 
             freeFunds(0);
-        } else {
-            status = CampaignStatus.Failed;
         }
 
         emit CampaignFinalized(address(this), status);

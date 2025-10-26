@@ -20,6 +20,10 @@ interface CampaignInterface {
         address indexed campaignAddress,
         CampaignStatus status
     );
+    event CampaignFailed(
+        address indexed campaignAddress,
+        CampaignStatus status
+    );
     event FundsCommitted(address indexed investor, uint256 amount);
     event FundsClaimed(address indexed investor, uint256 amount);
     event MilestoneCompleted(
@@ -32,7 +36,10 @@ interface CampaignInterface {
         address indexed requester,
         string evidence
     );
-    event CampaignSuccessful(address indexed campaignAddress, uint256 totalRaised);
+    event CampaignSuccessful(
+        address indexed campaignAddress,
+        uint256 totalRaised
+    );
 
     // ============ FUNCIONES DE INICIALIZACIÓN ============
 
