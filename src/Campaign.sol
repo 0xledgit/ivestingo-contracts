@@ -26,6 +26,7 @@ contract Campaign is CampaignInterface {
     address public addressAdmin;
     address public addressContractToken;
     address public addressBaseToken;
+    address public governance;
 
     uint256 public dateTimeEnd;
 
@@ -115,6 +116,11 @@ contract Campaign is CampaignInterface {
         status = CampaignStatus.Created;
         campaignInitialized = true;
         emit CampaignCreated(address(this), msg.sender);
+    }
+
+    function setGovernance(address _governance) external {
+        require(msg.sender == addressAdmin, "Only admin");
+        governance = _governance;
     }
 
     function commitFunds(uint256 _sharesQuantity) external {
@@ -267,6 +273,24 @@ contract Campaign is CampaignInterface {
             1
         );
         emit MilestoneCompleted(milestoneId, milestoneAmount);
+    }
+
+    function completeMilestoneByGovernance(uint256 milestoneId) external {
+        require(msg.sender == governance, "Only governance");
+        require(status == CampaignStatus.Successful, "Campaign not successful");
+        require(milestoneId == currentMilestone, "Invalid milestone order");
+        require(!milestoneCompleted[milestoneId], "Already completed");
+        require(milestoneId < totalMilestones, "Invalid ID");
+
+        milestoneCompleted[milestoneId] = true;
+        freeFunds(milestoneId + 1);
+        currentMilestone++;
+
+        if (currentMilestone == totalMilestones) {
+            status = CampaignStatus.Finalized;
+        }
+
+        emit MilestoneCompleted(milestoneId, 0); // amount can be computed if needed
     }
 
     function getMilestone(

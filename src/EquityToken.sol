@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
@@ -12,7 +13,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
  * Incluye ERC20Permit para aprobaciones sin gas mediante firmas
  * @author Ledgit (https://github.com/0xledgit)
  */
-contract EquityToken is ERC20, ERC20Permit, AccessControl {
+contract EquityToken is ERC20, ERC20Permit, ERC20Votes {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     uint256 public maxSupply;
@@ -23,19 +24,15 @@ contract EquityToken is ERC20, ERC20Permit, AccessControl {
         string memory symbol,
         uint256 _maxSupply,
         address _campaign
-    ) ERC20(name, symbol) ERC20Permit(name) {
+    ) ERC20(name, symbol) ERC20Permit(name) ERC20Votes() {
         require(_maxSupply > 0, "Max supply must be greater than 0");
         require(_campaign != address(0), "Invalid campaign address");
 
         maxSupply = _maxSupply;
         campaign = _campaign;
-
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-
-        _grantRole(MINTER_ROLE, _campaign);
     }
 
-    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
+    function mint(address to, uint256 amount) external {
         require(totalSupply() + amount <= maxSupply, "Exceeds max supply");
         _mint(to, amount);
     }
@@ -58,8 +55,24 @@ contract EquityToken is ERC20, ERC20Permit, AccessControl {
      * @dev Override requerido por Solidity para herencia múltiple
      * ERC20 y ERC20Permit tienen funciones conflictivas
      */
-    function nonces(address owner) public view virtual override(ERC20Permit) returns (uint256) {
+    function nonces(
+        address owner
+    ) public view virtual override(ERC20Permit) returns (uint256) {
         return super.nonces(owner);
+    }
+
+    function _mint(
+        address to,
+        uint256 amount
+    ) internal override(ERC20, ERC20Votes) {
+        super._mint(to, amount);
+    }
+
+    function _burn(
+        address account,
+        uint256 amount
+    ) internal override(ERC20, ERC20Votes) {
+        super._burn(account, amount);
     }
 
     /**
@@ -68,4 +81,5 @@ contract EquityToken is ERC20, ERC20Permit, AccessControl {
     function decimals() public pure override returns (uint8) {
         return 0;
     }
+
 }

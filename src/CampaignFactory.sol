@@ -5,6 +5,7 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import "./Campaign.sol";
 import "./EquityToken.sol";
 import "./interfaces/CampaignFactoryInterface.sol";
+import "./EquityGovernor.sol";
 
 /**
  * @title CampaignFactory
@@ -65,6 +66,9 @@ contract CampaignFactory is CampaignFactoryInterface {
             _milestoneDescriptions,
             _milestonePercentages
         );
+
+        address governor = address(new EquityGovernor(IVotes(address(tokenAddress))));
+        campaignAddress.setGovernance(governor);
 
         deployedCampaigns.push(campaignAddress);
         campaignsByPyme[_addressPyme].push(campaignAddress);
