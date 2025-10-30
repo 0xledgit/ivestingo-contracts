@@ -4,17 +4,18 @@ pragma solidity ^0.8.30;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/CampaignInterface.sol";
 import "./interfaces/EquityTokenInterface.sol";
 
 /**
  * @title Campaign
- * @dev Contrato de campaña para equity crowdfunding con gestión de hitos y distribución de tokens
- * Los hitos se configuran en cantidades de shares (equity tokens) en lugar de porcentajes
- * para garantizar distribuciones sin decimales
+ * @dev Campaign contract for equity crowdfunding with milestone management and token distribution
+ * Milestones are configured in shares (equity tokens) instead of percentages
+ * to ensure distributions without decimals
  * @author Ledgit (https://github.com/0xledgit)
  */
-contract Campaign is CampaignInterface {
+contract Campaign is CampaignInterface, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     CampaignStatus public status;
@@ -24,32 +25,31 @@ contract Campaign is CampaignInterface {
 
     address public addressPyme;
     address public addressAdmin;
+    address public campaignFactory;
     address public addressContractToken;
     address public addressBaseToken;
+    address public governance;
 
     uint256 public dateTimeEnd;
 
     mapping(uint256 => string) public milestoneMapping;
-    mapping(uint256 => uint256) public milestoneSharesMapping; // Cantidad de shares (equity tokens) a liberar en este hito
+    mapping(uint256 => uint256) public milestoneSharesMapping;
 
-    uint256 public platformFee; // Fee en basis points (ej: 300 = 3%)
+    uint256 public platformFee;
 
-    // Tracking de inversiones
     mapping(address => uint256) public investments;
     address[] public investors;
     uint256 public totalRaised;
     uint256 public totalSharesCommitted;
 
-    // Control de hitos
     uint256 public currentMilestone;
     uint256 public totalMilestones;
     mapping(uint256 => bool) public milestoneCompleted;
     mapping(uint256 => bool) public milestoneApprovalRequested;
 
-    // Supply de tokens a emitir
     uint256 public tokenSupplyOffered;
-    uint256 public tokenSupplyEffective; // Tokens efectivos según capital levantado
-    bool public feePaid; // Control de pago único del fee
+    uint256 public tokenSupplyEffective;
+    bool public feePaid;
 
     modifier onlyNewCampaign() {
         _onlyNewCampaign();
@@ -63,6 +63,7 @@ contract Campaign is CampaignInterface {
     function initialize(
         address _addressPyme,
         address _addressAdmin,
+        address _campaignFactory,
         address _addressContractToken,
         address _addressBaseToken,
         uint256 _maxCap,
@@ -90,6 +91,7 @@ contract Campaign is CampaignInterface {
 
         addressPyme = _addressPyme;
         addressAdmin = _addressAdmin;
+        campaignFactory = _campaignFactory;
         addressContractToken = _addressContractToken;
         addressBaseToken = _addressBaseToken;
         maxCap = _maxCap;
@@ -117,7 +119,12 @@ contract Campaign is CampaignInterface {
         emit CampaignCreated(address(this), msg.sender);
     }
 
-    function commitFunds(uint256 _sharesQuantity) external {
+    function setGovernance(address _governance) external {
+        require(msg.sender == campaignFactory, "Only CampaignFactory");
+        governance = _governance;
+    }
+
+    function commitFunds(uint256 _sharesQuantity) external nonReentrant {
         require(
             status == CampaignStatus.Active || status == CampaignStatus.Created,
             "Campaign not active"
@@ -192,7 +199,16 @@ contract Campaign is CampaignInterface {
         emit CampaignFinalized(address(this), status);
     }
 
-    function claimFunds() external {
+    function claimFunds() external nonReentrant {
+        if (
+            block.timestamp > dateTimeEnd &&
+            totalRaised < minCap &&
+            status == CampaignStatus.Created
+        ) {
+            status = CampaignStatus.Failed;
+            emit CampaignFailed(address(this), status);
+        }
+
         require(status == CampaignStatus.Failed, "Campaign not failed");
         uint256 amount = investments[msg.sender];
         require(amount > 0, "No funds to claim");
@@ -269,6 +285,24 @@ contract Campaign is CampaignInterface {
         emit MilestoneCompleted(milestoneId, milestoneAmount);
     }
 
+    function completeMilestoneByGovernance(uint256 milestoneId) external {
+        require(msg.sender == governance, "Only governance");
+        require(status == CampaignStatus.Successful, "Campaign not successful");
+        require(milestoneId == currentMilestone, "Invalid milestone order");
+        require(!milestoneCompleted[milestoneId], "Already completed");
+        require(milestoneId < totalMilestones, "Invalid ID");
+
+        milestoneCompleted[milestoneId] = true;
+        freeFunds(milestoneId + 1);
+        currentMilestone++;
+
+        if (currentMilestone == totalMilestones) {
+            status = CampaignStatus.Finalized;
+        }
+
+        emit MilestoneCompleted(milestoneId, 0); // amount can be computed if needed
+    }
+
     function getMilestone(
         uint256 milestoneId
     )
@@ -328,16 +362,11 @@ contract Campaign is CampaignInterface {
             100000000
         );
 
+        uint256 feeAmount = 0;
         if (milestoneId == 0 && !feePaid) {
-            uint256 feeAmount = Math.mulDiv(totalRaised, platformFee, 10000);
-
-            if (feeAmount > 0) {
-                IERC20(addressBaseToken).safeTransfer(addressAdmin, feeAmount);
-                feePaid = true;
-            }
+            feeAmount = Math.mulDiv(totalRaised, platformFee, 10000);
+            feePaid = true;
         }
-
-        IERC20(addressBaseToken).safeTransfer(addressPyme, milestoneAmount);
 
         uint256 tokensForMilestone = milestoneShares;
 
@@ -345,6 +374,12 @@ contract Campaign is CampaignInterface {
             address(this),
             tokensForMilestone
         );
+
+        if (feeAmount > 0) {
+            IERC20(addressBaseToken).safeTransfer(addressAdmin, feeAmount);
+        }
+
+        IERC20(addressBaseToken).safeTransfer(addressPyme, milestoneAmount);
 
         for (uint256 i = 0; i < investors.length; i++) {
             address investor = investors[i];
@@ -359,6 +394,7 @@ contract Campaign is CampaignInterface {
                         investor,
                         tokensForInvestor
                     );
+                    EquityTokenInterface(addressContractToken).delegate(investor);
                     emit TokensDistributed(investor, tokensForInvestor);
                 }
             }

@@ -2,7 +2,7 @@
 cache/
 out/
 CLAUDE/
-broadcast/
+broadcast
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
