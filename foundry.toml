@@ -2,7 +2,16 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+optimizer = true
+optimizer_runs = 50
 
 remappings = [
     "@openzeppelin/contracts=lib/openzeppelin-contracts/contracts"
 ]
+
+[profile.production]
+out = "out-production"
+via_ir = true
+
+[profile.ci]
+fuzz-runs = 10_000

@@ -47,6 +47,7 @@ interface CampaignInterface {
      * @dev Inicializa una campaña clonada con todos sus parámetros
      * @param _addressPyme Dirección de la wallet de la Pyme
      * @param _addressAdmin Dirección del admin/plataforma
+     * @param _campaignFactory Dirección del contrato CampaignFactory
      * @param _addressContractToken Dirección del token de equity (ERC20)
      * @param _addressBaseToken Dirección del token de inversión (USDC, etc.)
      * @param _maxCap Hard cap (objetivo máximo)
@@ -60,6 +61,7 @@ interface CampaignInterface {
     function initialize(
         address _addressPyme,
         address _addressAdmin,
+        address _campaignFactory,
         address _addressContractToken,
         address _addressBaseToken,
         uint256 _maxCap,
