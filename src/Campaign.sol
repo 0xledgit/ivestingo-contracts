@@ -18,6 +18,14 @@ import "./interfaces/EquityTokenInterface.sol";
 contract Campaign is CampaignInterface, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    /**
+     * @dev Constructor locks the implementation contract
+     * Prevents initialization of the implementation itself (only clones can be initialized)
+     */
+    constructor() {
+        campaignInitialized = true;
+    }
+
     CampaignStatus public status;
     bool public campaignInitialized;
     uint256 public maxCap;
@@ -75,6 +83,10 @@ contract Campaign is CampaignInterface, ReentrancyGuard {
         uint256[] memory _milestoneShares
     ) external onlyNewCampaign {
         require(
+            msg.sender == _campaignFactory,
+            "Only factory can initialize"
+        );
+        require(
             _milestoneDescriptions.length == _milestoneShares.length,
             "Milestone arrays length mismatch"
         );
@@ -88,6 +100,7 @@ contract Campaign is CampaignInterface, ReentrancyGuard {
             _dateTimeEnd > block.timestamp,
             "End date must be in the future"
         );
+        require(_platformFee <= 10_000, "platformFee must be <= 100%");
 
         addressPyme = _addressPyme;
         addressAdmin = _addressAdmin;

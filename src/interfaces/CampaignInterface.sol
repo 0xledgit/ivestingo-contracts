@@ -10,7 +10,7 @@ interface CampaignInterface {
         Finalized
     }
 
-    // ============ EVENTOS ============
+    // ============ EVENTS ============
 
     event CampaignCreated(
         address indexed campaignAddress,
@@ -41,22 +41,22 @@ interface CampaignInterface {
         uint256 totalRaised
     );
 
-    // ============ FUNCIONES DE INICIALIZACIÓN ============
+    // ============ INITIALIZATION FUNCTIONS ============
 
     /**
-     * @dev Inicializa una campaña clonada con todos sus parámetros
-     * @param _addressPyme Dirección de la wallet de la Pyme
-     * @param _addressAdmin Dirección del admin/plataforma
-     * @param _campaignFactory Dirección del contrato CampaignFactory
-     * @param _addressContractToken Dirección del token de equity (ERC20)
-     * @param _addressBaseToken Dirección del token de inversión (USDC, etc.)
-     * @param _maxCap Hard cap (objetivo máximo)
-     * @param _minCap Soft cap (objetivo mínimo)
-     * @param _dateTimeEnd Timestamp de cierre de la campaña
-     * @param _tokenSupplyOffered Supply máximo de tokens a ofrecer
-     * @param _platformFee Fee de plataforma en basis points (300 = 3%)
-     * @param _milestoneDescriptions Array de descripciones de milestones
-     * @param _milestoneShares Array de cantidades de shares (equity tokens) por hito (suma = _tokenSupplyOffered)
+     * @dev Initializes a cloned campaign with all its parameters
+     * @param _addressPyme Address of the Pyme wallet
+     * @param _addressAdmin Address of the admin/platform
+     * @param _campaignFactory Address of the CampaignFactory contract
+     * @param _addressContractToken Address of the equity token (ERC20)
+     * @param _addressBaseToken Address of the investment token (USDC, etc.)
+     * @param _maxCap Hard cap (maximum goal)
+     * @param _minCap Soft cap (minimum goal)
+     * @param _dateTimeEnd Campaign closing timestamp
+     * @param _tokenSupplyOffered Maximum token supply to offer
+     * @param _platformFee Platform fee in basis points (300 = 3%)
+     * @param _milestoneDescriptions Array of milestone descriptions
+     * @param _milestoneShares Array of share quantities (equity tokens) per milestone (sum = _tokenSupplyOffered)
      */
     function initialize(
         address _addressPyme,
@@ -73,34 +73,35 @@ interface CampaignInterface {
         uint256[] memory _milestoneShares
     ) external;
 
-    // ============ FUNCIONES DE INVERSIÓN ============
+    // ============ INVESTMENT FUNCTIONS ============
 
     /**
-     * @dev Permite a inversores depositar fondos en la campaña
-     * @param amount Cantidad de tokens base a invertir
+     * @dev Allows investors to commit a quantity of equity shares
+     * @param sharesQuantity Number of equity shares to acquire
+     * @notice The contract will automatically calculate the required base token amount
      */
-    function commitFunds(uint256 amount) external;
+    function commitFunds(uint256 sharesQuantity) external;
 
     /**
-     * @dev Permite a inversores reclamar fondos si la campaña falla
+     * @dev Allows investors to reclaim funds if the campaign fails
      */
     function claimFunds() external;
 
-    // ============ FUNCIONES DE CIERRE ============
+    // ============ FINALIZATION FUNCTIONS ============
 
     /**
-     * @dev Finaliza la campaña al llegar a dateTimeEnd
-     * Determina si fue exitosa (totalRaised >= minCap) o fallida
-     * Si exitosa, libera automáticamente el milestone 0
+     * @dev Finalizes the campaign upon reaching dateTimeEnd
+     * Determines if it was successful (totalRaised >= minCap) or failed
+     * If successful, automatically releases milestone 0
      */
     function finalizeCampaign() external;
 
-    // ============ FUNCIONES DE MILESTONES ============
+    // ============ MILESTONE FUNCTIONS ============
 
     /**
-     * @dev Pyme solicita aprobación de un milestone completado
-     * @param milestoneId ID del milestone (0, 1, 2...)
-     * @param evidence URL o hash de evidencia del trabajo completado
+     * @dev Pyme requests approval for a completed milestone
+     * @param milestoneId Milestone ID (0, 1, 2...)
+     * @param evidence URL or hash of evidence of completed work
      */
     function requestApproveMilestone(
         uint256 milestoneId,
@@ -108,17 +109,17 @@ interface CampaignInterface {
     ) external;
 
     /**
-     * @dev Admin aprueba un milestone y libera fondos/tokens
-     * @param milestoneId ID del milestone a completar
+     * @dev Admin approves a milestone and releases funds/tokens
+     * @param milestoneId Milestone ID to complete
      */
     function completeMilestone(uint256 milestoneId) external;
 
     /**
-     * @dev Consulta información de un milestone
-     * @param milestoneId ID del milestone
-     * @return description Descripción del milestone
-     * @return amount Monto calculado basado en totalRaised
-     * @return completed Si el milestone fue completado
+     * @dev Queries milestone information
+     * @param milestoneId Milestone ID
+     * @return description Milestone description
+     * @return amount Calculated amount based on totalRaised
+     * @return completed Whether the milestone was completed
      */
     function getMilestone(
         uint256 milestoneId
