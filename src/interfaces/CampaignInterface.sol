@@ -40,6 +40,10 @@ interface CampaignInterface {
         address indexed campaignAddress,
         uint256 totalRaised
     );
+    event MilestoneTokensReady(
+        uint256 indexed milestoneId,
+        uint256 totalTokens
+    );
 
     // ============ INITIALIZATION FUNCTIONS ============
 
@@ -72,6 +76,12 @@ interface CampaignInterface {
         string[] memory _milestoneDescriptions,
         uint256[] memory _milestoneShares
     ) external;
+
+    /**
+     * @dev Sets the governance contract address
+     * @param _governance Address of the governance contract
+     */
+    function setGovernance(address _governance) external;
 
     // ============ INVESTMENT FUNCTIONS ============
 
@@ -115,6 +125,12 @@ interface CampaignInterface {
     function completeMilestone(uint256 milestoneId) external;
 
     /**
+     * @dev Governance contract approves a milestone and releases funds/tokens
+     * @param milestoneId Milestone ID to complete
+     */
+    function completeMilestoneByGovernance(uint256 milestoneId) external;
+
+    /**
      * @dev Queries milestone information
      * @param milestoneId Milestone ID
      * @return description Milestone description
@@ -127,4 +143,23 @@ interface CampaignInterface {
         external
         view
         returns (string memory description, uint256 amount, bool completed);
+
+    // ============ TOKEN CLAIMING FUNCTIONS ============
+
+    /**
+     * @dev Allows investors to claim their equity tokens for a specific milestone
+     * @param milestoneId The milestone ID to claim tokens from
+     */
+    function claimTokens(uint256 milestoneId) external;
+
+    /**
+     * @dev Returns the amount of claimable tokens for an investor at a specific milestone
+     * @param milestoneId The milestone ID
+     * @param investor The investor address
+     * @return The amount of tokens available to claim
+     */
+    function getClaimableTokens(
+        uint256 milestoneId,
+        address investor
+    ) external view returns (uint256);
 }

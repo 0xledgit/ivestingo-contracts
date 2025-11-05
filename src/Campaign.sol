@@ -59,6 +59,10 @@ contract Campaign is CampaignInterface, ReentrancyGuard {
     uint256 public tokenSupplyEffective;
     bool public feePaid;
 
+    mapping(uint256 => mapping(address => uint256)) public claimableTokens;
+    mapping(uint256 => mapping(address => bool)) public tokensClaimed;
+    mapping(uint256 => bool) public tokensCalculated;
+
     modifier onlyNewCampaign() {
         _onlyNewCampaign();
         _;
@@ -344,6 +348,51 @@ contract Campaign is CampaignInterface, ReentrancyGuard {
         );
     }
 
+    function claimTokens(uint256 milestoneId) external nonReentrant {
+        require(
+            status == CampaignStatus.Successful ||
+                status == CampaignStatus.Finalized,
+            "Campaign not successful"
+        );
+        require(
+            tokensCalculated[milestoneId],
+            "Tokens not ready for this milestone"
+        );
+        require(
+            !tokensClaimed[milestoneId][msg.sender],
+            "Tokens already claimed"
+        );
+        require(investments[msg.sender] > 0, "No investment found");
+
+        uint256 milestoneShares = milestoneSharesMapping[milestoneId];
+        uint256 tokensForInvestor = (milestoneShares *
+            investments[msg.sender]) / totalRaised;
+
+        require(tokensForInvestor > 0, "No tokens to claim");
+
+        tokensClaimed[milestoneId][msg.sender] = true;
+
+        IERC20(addressContractToken).safeTransfer(
+            msg.sender,
+            tokensForInvestor
+        );
+        EquityTokenInterface(addressContractToken).delegate(msg.sender);
+
+        emit TokensDistributed(msg.sender, tokensForInvestor);
+    }
+
+    function getClaimableTokens(
+        uint256 milestoneId,
+        address investor
+    ) external view returns (uint256) {
+        if (!tokensCalculated[milestoneId]) return 0;
+        if (tokensClaimed[milestoneId][investor]) return 0;
+        if (investments[investor] == 0) return 0;
+
+        uint256 milestoneShares = milestoneSharesMapping[milestoneId];
+        return (milestoneShares * investments[investor]) / totalRaised;
+    }
+
     function finalizeContract(uint256 milestoneId) private {
         require(milestoneId == totalMilestones, "Invalid milestone ID");
         status = CampaignStatus.Finalized;
@@ -394,23 +443,7 @@ contract Campaign is CampaignInterface, ReentrancyGuard {
 
         IERC20(addressBaseToken).safeTransfer(addressPyme, milestoneAmount);
 
-        for (uint256 i = 0; i < investors.length; i++) {
-            address investor = investors[i];
-            uint256 investorAmount = investments[investor];
-
-            if (investorAmount > 0) {
-                uint256 tokensForInvestor = (tokensForMilestone *
-                    investorAmount) / totalRaised;
-
-                if (tokensForInvestor > 0) {
-                    IERC20(addressContractToken).safeTransfer(
-                        investor,
-                        tokensForInvestor
-                    );
-                    EquityTokenInterface(addressContractToken).delegate(investor);
-                    emit TokensDistributed(investor, tokensForInvestor);
-                }
-            }
-        }
+        tokensCalculated[milestoneId] = true;
+        emit MilestoneTokensReady(milestoneId, tokensForMilestone);
     }
 }
