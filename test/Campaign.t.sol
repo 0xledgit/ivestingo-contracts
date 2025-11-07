@@ -158,6 +158,12 @@ contract CampaignTest is BaseTest {
 
         assertGt(pymeBalanceAfter, pymeBalanceBefore);
         assertGt(adminBalanceAfter, adminBalanceBefore);
+
+        assertTrue(campaign.tokensCalculated(0));
+
+        vm.prank(investor1);
+        campaign.claimTokens(0);
+
         assertGt(equityToken.balanceOf(investor1), 0);
     }
 
@@ -336,6 +342,12 @@ contract CampaignTest is BaseTest {
         assertTrue(campaign.milestoneCompleted(0));
         assertEq(campaign.currentMilestone(), 1);
         assertGt(baseToken.balanceOf(pyme), pymeBalanceBefore);
+
+        assertTrue(campaign.tokensCalculated(1));
+
+        vm.prank(investor1);
+        campaign.claimTokens(1);
+
         assertGt(equityToken.balanceOf(investor1), investorTokensBefore);
     }
 
@@ -464,6 +476,14 @@ contract CampaignTest is BaseTest {
 
         campaign.finalizeCampaign();
 
+        assertTrue(campaign.tokensCalculated(0));
+
+        vm.prank(investor1);
+        campaign.claimTokens(0);
+
+        vm.prank(investor2);
+        campaign.claimTokens(0);
+
         uint256 expectedTokensInv1 = (milestoneShares[0] * amountToPay1) / maxCap;
         uint256 expectedTokensInv2 = (milestoneShares[0] * amountToPay2) / maxCap;
 
@@ -511,6 +531,12 @@ contract CampaignTest is BaseTest {
         }
 
         assertEq(uint256(campaign.status()), uint256(CampaignInterface.CampaignStatus.Finalized));
+
+        for (uint256 i = 0; i < 3; i++) {
+            vm.prank(investor1);
+            campaign.claimTokens(i);
+        }
+
         assertEq(equityToken.balanceOf(investor1), tokenSupplyOffered);
     }
 
@@ -548,6 +574,17 @@ contract CampaignTest is BaseTest {
             campaign.completeMilestone(i);
         }
 
+        for (uint256 i = 0; i < 3; i++) {
+            vm.prank(investor1);
+            campaign.claimTokens(i);
+
+            vm.prank(investor2);
+            campaign.claimTokens(i);
+
+            vm.prank(investor3);
+            campaign.claimTokens(i);
+        }
+
         assertEq(equityToken.balanceOf(investor1), sharesToBuy1);
         assertEq(equityToken.balanceOf(investor2), sharesToBuy2);
         assertEq(equityToken.balanceOf(investor3), sharesToBuy3);
@@ -579,5 +616,159 @@ contract CampaignTest is BaseTest {
 
         (, , bool completedAfter) = campaign.getMilestone(0);
         assertTrue(completedAfter);
+    }
+
+    function test_claimTokens_success() public {
+        uint256 sharesToBuy = tokenSupplyOffered;
+        uint256 amountToPay = maxCap;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay);
+        campaign.commitFunds(sharesToBuy);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        assertTrue(campaign.tokensCalculated(0));
+
+        vm.prank(investor1);
+        campaign.claimTokens(0);
+
+        assertEq(equityToken.balanceOf(investor1), milestoneShares[0]);
+        assertTrue(campaign.tokensClaimed(0, investor1));
+    }
+
+    function test_claimTokens_alreadyClaimed() public {
+        uint256 sharesToBuy = tokenSupplyOffered;
+        uint256 amountToPay = maxCap;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay);
+        campaign.commitFunds(sharesToBuy);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        vm.prank(investor1);
+        campaign.claimTokens(0);
+
+        vm.prank(investor1);
+        vm.expectRevert("Tokens already claimed");
+        campaign.claimTokens(0);
+    }
+
+    function test_claimTokens_tokensNotReady() public {
+        uint256 sharesToBuy = tokenSupplyOffered;
+        uint256 amountToPay = maxCap;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay);
+        campaign.commitFunds(sharesToBuy);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        vm.prank(investor1);
+        vm.expectRevert("Tokens not ready for this milestone");
+        campaign.claimTokens(1);
+    }
+
+    function test_claimTokens_noInvestment() public {
+        uint256 sharesToBuy = tokenSupplyOffered;
+        uint256 amountToPay = maxCap;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay);
+        campaign.commitFunds(sharesToBuy);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        vm.prank(investor2);
+        vm.expectRevert("No investment found");
+        campaign.claimTokens(0);
+    }
+
+    function test_getClaimableTokens_success() public {
+        uint256 sharesToBuy = tokenSupplyOffered;
+        uint256 amountToPay = maxCap;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay);
+        campaign.commitFunds(sharesToBuy);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        uint256 claimable = campaign.getClaimableTokens(0, investor1);
+        assertEq(claimable, milestoneShares[0]);
+    }
+
+    function test_getClaimableTokens_afterClaimed() public {
+        uint256 sharesToBuy = tokenSupplyOffered;
+        uint256 amountToPay = maxCap;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay);
+        campaign.commitFunds(sharesToBuy);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        vm.prank(investor1);
+        campaign.claimTokens(0);
+
+        uint256 claimable = campaign.getClaimableTokens(0, investor1);
+        assertEq(claimable, 0);
+    }
+
+    function test_getClaimableTokens_notReady() public {
+        uint256 sharesToBuy = tokenSupplyOffered;
+        uint256 amountToPay = maxCap;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay);
+        campaign.commitFunds(sharesToBuy);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        uint256 claimable = campaign.getClaimableTokens(1, investor1);
+        assertEq(claimable, 0);
+    }
+
+    function test_claimTokens_multipleInvestorsProportional() public {
+        uint256 sharesToBuy1 = 6000;
+        uint256 sharesToBuy2 = 4000;
+
+        uint256 amountToPay1 = (sharesToBuy1 * maxCap) / tokenSupplyOffered;
+        uint256 amountToPay2 = (sharesToBuy2 * maxCap) / tokenSupplyOffered;
+
+        vm.startPrank(investor1);
+        baseToken.approve(address(campaign), amountToPay1);
+        campaign.commitFunds(sharesToBuy1);
+        vm.stopPrank();
+
+        vm.startPrank(investor2);
+        baseToken.approve(address(campaign), amountToPay2);
+        campaign.commitFunds(sharesToBuy2);
+        vm.stopPrank();
+
+        campaign.finalizeCampaign();
+
+        uint256 claimable1 = campaign.getClaimableTokens(0, investor1);
+        uint256 claimable2 = campaign.getClaimableTokens(0, investor2);
+
+        assertEq(claimable1, (milestoneShares[0] * amountToPay1) / maxCap);
+        assertEq(claimable2, (milestoneShares[0] * amountToPay2) / maxCap);
+
+        vm.prank(investor1);
+        campaign.claimTokens(0);
+
+        vm.prank(investor2);
+        campaign.claimTokens(0);
+
+        assertEq(equityToken.balanceOf(investor1), claimable1);
+        assertEq(equityToken.balanceOf(investor2), claimable2);
     }
 }

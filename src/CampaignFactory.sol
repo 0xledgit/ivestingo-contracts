@@ -5,6 +5,7 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import "./Campaign.sol";
 import "./EquityToken.sol";
 import "./interfaces/CampaignFactoryInterface.sol";
+import "./interfaces/CampaignInterface.sol";
 import "./GovernorFactory.sol";
 
 /**
@@ -55,20 +56,26 @@ contract CampaignFactory is CampaignFactoryInterface {
             )
         );
 
-        Campaign(campaignAddress).initialize(
-            _addressPyme,
-            ADDRESS_ADMIN,
-            address(this),
-            tokenAddress,
-            ADDRESS_BASE_TOKEN,
-            _maxCap,
-            _minCap,
-            _dateTimeEnd,
-            _tokenSupplyOffered,
-            _platformFee,
-            _milestoneDescriptions,
-            _milestonePercentages
+        (bool success, ) = campaignAddress.call(
+            abi.encodeCall(
+                CampaignInterface.initialize,
+                (
+                    _addressPyme,
+                    ADDRESS_ADMIN,
+                    address(this),
+                    tokenAddress,
+                    ADDRESS_BASE_TOKEN,
+                    _maxCap,
+                    _minCap,
+                    _dateTimeEnd,
+                    _tokenSupplyOffered,
+                    _platformFee,
+                    _milestoneDescriptions,
+                    _milestonePercentages
+                )
+            )
         );
+        require(success, "Campaign initialization failed");
 
         address governor = GOVERNOR_FACTORY.createGovernor(IVotes(tokenAddress));
         Campaign(campaignAddress).setGovernance(governor);
